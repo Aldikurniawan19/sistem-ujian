@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Classroom {
+  id           String          @id @default(cuid())
+  name         String
+  level        String          // "SMP" | "SMA"
+  grade        Int             // 7..12
+  academicYear String
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  students     User[]
+  exams        ExamClassroom[]
+
+  @@unique([name, academicYear])
+}
+
+model User {
+  id           String        @id @default(cuid())
+  username     String        @unique // NISN for student, NIP for teacher, username for admin
+  name         String
+  role         String        // "ADMIN" | "TEACHER" | "STUDENT"
+  passwordHash String
+  classroomId  String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  classroom    Classroom?    @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+  sessions     Session[]
+  questions    Question[]
+  exams        Exam[]
+  attempts     ExamAttempt[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Subject {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  level     String     // "SMP" | "SMA" | "ALL"
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  questions Question[]
+  exams     Exam[]
+}
+
+model Question {
+  id                  String          @id @default(cuid())
+  subjectId           String
+  authorId            String
+  type                String          // "SINGLE_CHOICE" | "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "ESSAY"
+  difficulty          String          // "EASY" | "MEDIUM" | "HARD"
+  stimulus            String?
+  prompt              String
+  imagePath           String?
+  optionsJson         String?         // JSON array of QuestionOption
+  acceptedAnswersJson String?         // JSON array of accepted string answers
+  points              Int             @default(10)
+  competencyTag       String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  subject             Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  author              User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  examQuestions       ExamQuestion[]
+  attemptAnswers      AttemptAnswer[]
+
+  @@index([subjectId])
+  @@index([authorId])
+}
+
+model Exam {
+  id                  String          @id @default(cuid())
+  title               String
+  description         String?
+  category            String          // "PH" | "PTS" | "PAS" | "ANBK" | "TRYOUT"
+  subjectId           String
+  creatorId           String
+  durationMinutes     Int
+  startAt             DateTime
+  endAt               DateTime
+  token               String
+  shuffleQuestions    Boolean         @default(true)
+  shuffleOptions      Boolean         @default(true)
+  showResultToStudent Boolean         @default(true)
+  maxViolations       Int             @default(3)
+  status              String          @default("DRAFT") // "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  subject             Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  creator             User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  classrooms          ExamClassroom[]
+  questions           ExamQuestion[]
+  attempts            ExamAttempt[]
+
+  @@index([subjectId])
+  @@index([creatorId])
+  @@index([status])
+}
+
+model ExamClassroom {
+  examId      String
+  classroomId String
+
+  exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  @@id([examId, classroomId])
+}
+
+model ExamQuestion {
+  id             String   @id @default(cuid())
+  examId         String
+  questionId     String
+  orderIndex     Int
+  pointsOverride Int?
+
+  exam           Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question       Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, questionId])
+  @@index([examId])
+}
+
+model ExamAttempt {
+  id                String          @id @default(cuid())
+  examId            String
+  studentId         String
+  status            String          @default("IN_PROGRESS") // "IN_PROGRESS" | "SUBMITTED" | "LOCKED"
+  startedAt         DateTime        @default(now())
+  expiresAt         DateTime
+  submittedAt       DateTime?
+  questionOrderJson String          // JSON string[] of questionIds
+  optionOrdersJson  String          // JSON Record<questionId, string[]> of optionIds
+  violationCount    Int             @default(0)
+  autoScore         Float           @default(0)
+  manualScore       Float           @default(0)
+  totalScore        Float           @default(0)
+  maxScore          Float           @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  exam              Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student           User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers           AttemptAnswer[]
+  violations        ViolationLog[]
+
+  @@unique([examId, studentId])
+  @@index([examId])
+  @@index([studentId])
+}
+
+model AttemptAnswer {
+  id              String      @id @default(cuid())
+  attemptId       String
+  questionId      String
+  answerJson      String?     // JSON string | string[] | null
+  isFlagged       Boolean     @default(false)
+  isCorrect       Boolean?
+  earnedPoints    Float?
+  teacherFeedback String?
+  updatedAt       DateTime    @updatedAt
+
+  attempt         ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+model ViolationLog {
+  id        String      @id @default(cuid())
+  attemptId String
+  type      String      // "TAB_SWITCH" | "WINDOW_BLUR" | "FULLSCREEN_EXIT" | "SHORTCUT_BLOCKED"
+  detail    String?
+  createdAt DateTime    @default(now())
+
+  attempt   ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+}

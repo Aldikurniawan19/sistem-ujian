@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+coverage/
+prisma/dev.db
+prisma/dev.db-journal
+prisma/test.db
+prisma/test.db-journal
+.env
+.env.local
+public/uploads/*
+!public/uploads/.gitkeep
+*.tsbuildinfo
+next-env.d.ts
+
+# Agent rules & setup files
+.agent/
+.agents/
+AGENTS.md
+DESIGN.md
+README-SETUP.md
